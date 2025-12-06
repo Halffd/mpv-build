@@ -1,5 +1,7 @@
 #!/bin/sh
 set -e
+export CC=gcc
+export CXX=g++
 
 cd mpv
 meson compile -C build "$@"

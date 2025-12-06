@@ -2,6 +2,16 @@
 set -e
 export LC_ALL=C
 
+# Use GCC for everything (avoids Clang/GCC LTO mismatch)
+export CC=gcc
+export CXX=g++
+export AR=gcc-ar          # LTO-aware archiver
+export RANLIB=gcc-ranlib  # LTO-aware ranlib
+export NM=gcc-nm          # LTO-aware nm
+# Aggressive but stable flags
+export CFLAGS="-O3 -march=native -mtune=skylake -mavx2 -mfma -mf16c -maes -mpclmul -flto -ffast-math -pipe -fomit-frame-pointer -ftree-vectorize  -fPIC"
+export CXXFLAGS="-O3 -march=native -mtune=skylake -mavx2 -mfma -mf16c -maes -mpclmul -flto -ffast-math -pipe -fomit-frame-pointer -ftree-vectorize  -fPIC"
+
 #scripts/fribidi-config
 #scripts/fribidi-build "$@"
 scripts/libplacebo-config

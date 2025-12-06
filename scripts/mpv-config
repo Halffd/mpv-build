@@ -4,7 +4,8 @@ set -e
 BUILD="$(pwd)"
 newline="
 "
-
+export CC=gcc
+export CXX=g++
 if test -f "$BUILD"/mpv_options ; then
     IFS=$newline
     set -- $(cat "$BUILD"/mpv_options) "$@"
@@ -29,4 +30,16 @@ cd "$BUILD"/mpv
 # need to link against stdc++ in case libplacebo was built with glslang,
 # which requires that
 export LDFLAGS="$LDFLAGS $(pkg-config --libs fontconfig harfbuzz fribidi) -lstdc++"
-meson setup build -Dbuildtype=release $OPTIONS "$@"
+export LDFLAGS="$LDFLAGS -L$BUILD/build_libs/lib $(pkg-config --libs fontconfig harfbuzz fribidi) -lstdc++"
+meson setup build \
+    -Dbuildtype=release \
+    -Dlibmpv=true \
+    -Dlua=enabled \
+    -Djavascript=enabled \
+    -Dalsa=enabled \
+    -Dpipewire=enabled \
+    -Dpulse=enabled \
+    -Ddrm=enabled \
+    -Dvulkan=enabled \
+    -Dgl=enabled \
+    $OPTIONS "$@"

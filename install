@@ -1,4 +1,5 @@
 #!/bin/sh
 set -e
 
-scripts/mpv-install
+./scripts/mpv-install
+./scripts/ffmpeg-install

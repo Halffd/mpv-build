@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+BUILD="$(pwd)"
+
+# Install FFmpeg to /usr/local
+sudo make -C "$BUILD"/ffmpeg_build install DESTDIR=/usr/local
+
+echo "FFmpeg installed to /usr/local"#!/bin/sh
+set -e
+
+BUILD="$(pwd)"
+
+# Install FFmpeg libraries to build_libs (for mpv)
+make -C "$BUILD"/ffmpeg_build install
+
+# Also install binaries to /usr/local/bin (for CLI use)
+echo "Installing FFmpeg binaries to /usr/local/bin..."
+sudo install -m755 "$BUILD"/ffmpeg_build/ffmpeg /usr/local/bin/
+sudo install -m755 "$BUILD"/ffmpeg_build/ffprobe /usr/local/bin/
+sudo install -m755 "$BUILD"/ffmpeg_build/ffplay /usr/local/bin/
+sudo cp -r "$BUILD"/build_libs/* /usr/local
+echo "FFmpeg installed:"
+echo "  - Libraries: $BUILD/build_libs"
+echo "  - Binaries: /usr/local/bin"
