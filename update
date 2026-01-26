@@ -142,3 +142,6 @@ esac
 checkout_all
 
 do_update_debian_versions
+
+#cd mpv
+#git apply ../subs.patch
