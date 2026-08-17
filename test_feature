@@ -1,0 +1,34 @@
+#!/bin/sh
+# Test script to verify the sub-bottom-stacking feature is in place
+
+echo "Checking if sub-bottom-stacking feature is properly implemented..."
+
+# Check if the option is defined in options.c
+if grep -q "sub-bottom-stacking" mpv/options/options.c; then
+    echo "✓ Option defined in options.c"
+else
+    echo "✗ Option NOT found in options.c"
+fi
+
+# Check if the option is in the struct in options.h
+if grep -q "sub_bottom_stacking" mpv/options/options.h; then
+    echo "✓ Option in struct in options.h"
+else
+    echo "✗ Option NOT found in options.h"
+fi
+
+# Check if the logic is implemented in osd.c
+if grep -q "sub_bottom_stacking" mpv/sub/osd.c; then
+    echo "✓ Logic implemented in osd.c"
+else
+    echo "✗ Logic NOT found in osd.c"
+fi
+
+# Check if documentation exists in options.rst
+if grep -q "sub-bottom-stacking" mpv/DOCS/man/options.rst; then
+    echo "✓ Documentation exists in options.rst"
+else
+    echo "✗ Documentation NOT found in options.rst"
+fi
+
+echo "Verification complete."

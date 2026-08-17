@@ -1,0 +1,163 @@
+diff --git a/DOCS/man/options.rst b/DOCS/man/options.rst
+index 149e7aae9e..6129ee4bf5 100644
+--- a/DOCS/man/options.rst
++++ b/DOCS/man/options.rst
+@@ -2572,6 +2572,12 @@ Subtitles
+     Specify the position of secondary subtitles on the screen. This is similar
+     to ``--sub-pos`` but for secondary subtitles.
+
++``--sub-bottom-stacking=<yes|no>``
++    Stack secondary subtitles with primary subtitles at the bottom of the
++    screen instead of the top of the screen. When enabled, both primary and
++    secondary subtitles will appear near the bottom of the screen, with
++    secondary positioned above the primary subtitle.
++
+ ``--sub-speed=<0.1-10.0>``
+     Multiply the subtitle event timestamps with the given value. Can be used
+     to fix the playback speed for frame-based subtitle formats. Affects text
+diff --git a/options/options.c b/options/options.c
+index 67ef4d499f..4874e79fdb 100644
+--- a/options/options.c
++++ b/options/options.c
+@@ -346,6 +346,7 @@ const struct m_sub_options mp_subtitle_sub_opts = {
+         {"sub-ass-force-style", OPT_REPLACED("sub-ass-style-overrides")},
+         {"sub-lavc-o", OPT_KEYVALUELIST(sub_avopts), .flags = UPDATE_SUB_HARD},
+         {"sub-glyph-limit", OPT_INT(sub_glyph_limit)},
++        {"sub-bottom-stacking", OPT_BOOL(sub_bottom_stacking)},
+         {"sub-bitmap-max-size", OPT_INT(sub_bitmap_max_size)},
+         {0}
+     },
+@@ -366,6 +367,7 @@ const struct m_sub_options mp_subtitle_sub_opts = {
+         .ass_video_aspect = 0,
+         .sub_shaper = 1,
+         .use_embedded_fonts = true,
++        .sub_bottom_stacking = false,
+     },
+     .change_flags = UPDATE_OSD,
+ };
+diff --git a/options/options.h b/options/options.h
+index 9299881f7e..b802a7cb02 100644
+--- a/options/options.h
++++ b/options/options.h
+@@ -133,6 +133,7 @@ struct mp_subtitle_opts {
+     bool sub_past_video_end;
+     int sub_glyph_limit;
+     int sub_bitmap_max_size;
++    bool sub_bottom_stacking;
+     char **sub_avopts;
+ };
+diff --git a/sub/osd.c b/sub/osd.c
+index 2788897396..6596f4ea37 100644
+--- a/sub/osd.c
++++ b/sub/osd.c
+@@ -414,6 +414,85 @@ struct sub_bitmap_list *osd_render(struct osd_state *osd, struct mp_osd_res res,
+         talloc_free(imgs);
+     }
+
++    // If subtitle bottom stacking is enabled, adjust positions so secondary
++    // subtitles appear above primary subtitles at the bottom of the screen
++    if (osd->opts->sub_bottom_stacking) {
++        struct sub_bitmaps *primary_bitmaps = NULL;
++        struct sub_bitmaps *secondary_bitmaps = NULL;
++
++        // Find primary and secondary subtitle bitmaps
++        for (int n = 0; n < list->num_items; n++) {
++            struct sub_bitmaps *imgs = list->items[n];
++            if (imgs->render_index == OSDTYPE_SUB) {
++                primary_bitmaps = imgs;
++            } else if (imgs->render_index == OSDTYPE_SUB2) {
++                secondary_bitmaps = imgs;
++            }
++        }
++
++        // If we have both primary and secondary subtitles, adjust positioning for stacking
++        if (primary_bitmaps && secondary_bitmaps) {
++            // Calculate actual height occupied by each subtitle track
++            int primary_min_y = list->h, primary_max_y = 0;
++            int secondary_min_y = list->h, secondary_max_y = 0;
++
++            for (int i = 0; i < primary_bitmaps->num_parts; i++) {
++                struct sub_bitmap *bi = &primary_bitmaps->parts[i];
++                int top_y = bi->y;
++                int bottom_y = bi->y + bi->dh;
++                if (top_y < primary_min_y) primary_min_y = top_y;
++                if (bottom_y > primary_max_y) primary_max_y = bottom_y;
++            }
++            int primary_height = primary_max_y - primary_min_y;
++
++            for (int i = 0; i < secondary_bitmaps->num_parts; i++) {
++                struct sub_bitmap *bi = &secondary_bitmaps->parts[i];
++                int top_y = bi->y;
++                int bottom_y = bi->y + bi->dh;
++                if (top_y < secondary_min_y) secondary_min_y = top_y;
++                if (bottom_y > secondary_max_y) secondary_max_y = bottom_y;
++            }
++            int secondary_height = secondary_max_y - secondary_min_y;
++
++            // Position both subtitles at the bottom of the screen, with secondary above primary
++            int margin = 5; // Small margin between subtitles
++
++            // Check if both subtitles can fit at the bottom
++            int total_required_height = primary_height + secondary_height + margin;
++            int bottom_y = list->h - 10; // Leave some margin from actual bottom
++
++            // If they can't both fit at the bottom, position them starting from the top
++            if (total_required_height > bottom_y) {
++                // Position primary subtitle at top
++                int new_primary_y = 10; // Start from top with margin
++                int primary_adjustment = new_primary_y - primary_min_y;
++
++                // Position secondary subtitle below the primary
++                int new_secondary_y = new_primary_y + primary_height + margin;
++                int secondary_adjustment = new_secondary_y - secondary_min_y;
++            } else {
++                // Position primary subtitle near the bottom
++                int new_primary_y = bottom_y - primary_height;
++                int primary_adjustment = new_primary_y - primary_min_y;
++
++                // Position secondary subtitle above the primary
++                int new_secondary_y = new_primary_y - secondary_height - margin;
++                int secondary_adjustment = new_secondary_y - secondary_min_y;
++            }
++
++            // Apply adjustments to all subtitle parts
++            for (int i = 0; i < primary_bitmaps->num_parts; i++) {
++                struct sub_bitmap *bi = &primary_bitmaps->parts[i];
++                bi->y += primary_adjustment;
++            }
++
++            for (int i = 0; i < secondary_bitmaps->num_parts; i++) {
++                struct sub_bitmap *bi = &secondary_bitmaps->parts[i];
++                bi->y += secondary_adjustment;
++            }
++        }
++    }
++
+     double elapsed = MP_TIME_NS_TO_MS(mp_time_ns() - start_time);
+     bool slow = elapsed > 5;
+     mp_msg(osd->log, slow ? MSGL_DEBUG : MSGL_TRACE, "Spent %.3f ms in %s%s\n",
+diff --git a/sub/sd_ass.c b/sub/sd_ass.c
+index ece372a231..2ce803b740 100644
+--- a/sub/sd_ass.c
++++ b/sub/sd_ass.c
+@@ -551,7 +551,19 @@ static void configure_ass(struct sd *sd, struct mp_osd_res *dim,
+         set_use_margins = opts->ass_use_margins;
+     }
+     if (converted || shared_opts->ass_style_override[sd->order]) {
+-        set_sub_pos = 100.0f - shared_opts->sub_pos[sd->order];
++        // When stacking is enabled, position both subtitles in the bottom area
++        // The fine-tuning based on actual rendered heights happens in osd.c
++        if (opts->sub_bottom_stacking) {
++            // For stacking, position primary at bottom, secondary slightly above
++            // to avoid initial overlap before osd.c fine-tuning
++            if (sd->order == 0) {
++                set_sub_pos = 0.0f; // Primary at bottom (bottom of screen)
++            } else { // sd->order == 1
++                set_sub_pos = 15.0f; // Secondary slightly above primary initially
++            }
++        } else {
++            set_sub_pos = 100.0f - shared_opts->sub_pos[sd->order];
++        }
+         set_line_spacing = opts->sub_line_spacing;
+         set_hinting = opts->sub_hinting;
+     }

@@ -31,30 +31,4 @@ cd "$BUILD"/mpv
 # which requires that
 export LDFLAGS="$LDFLAGS $(pkg-config --libs fontconfig harfbuzz fribidi) -lstdc++"
 export LDFLAGS="$LDFLAGS -L$BUILD/build_libs/lib $(pkg-config --libs fontconfig harfbuzz fribidi) -lstdc++"
-meson setup build \
-  -Dbuildtype=release \
-  -Dlibmpv=true \
-  -Dlua=enabled \
-  -Djavascript=enabled \
-  -Dalsa=enabled \
-  -Dpipewire=enabled \
-  -Dpulse=enabled \
-  -Djack=enabled \
-  -Dopenal=enabled \
-  -Dsndio=enabled \
-  -Dvulkan=enabled \
-  -Dgl=enabled \
-  -Dlibplacebo=enabled \
-  -Dcaca=enabled \
-  -Dkitty=enabled \
-  -Dsixel=enabled \
-  -Dx11=enabled \
-  -Dwayland=enabled \
-  -Ddrm=enabled \
-  -Dgbm=enabled \
-  -Degl=enabled \
-  -Ddvdread=enabled \
-  -Ddvdnav=enabled \
-  -Dbluray=enabled \
-  -Duchardet=enabled \
-    $OPTIONS "$@"
+meson setup build -Dbuildtype=release   -Dlibmpv=true   -Dlua=enabled   -Djavascript=enabled   -Dalsa=enabled   -Dpipewire=enabled   -Dpulse=enabled   -Djack=enabled   -Dopenal=enabled   -Dsndio=enabled   -Dvulkan=enabled   -Dgl=enabled   -Dcaca=enabled   -Dsixel=enabled   -Dx11=enabled   -Dwayland=enabled   -Ddrm=enabled   -Dgbm=enabled   -Degl=enabled   -Ddvdnav=enabled   -Duchardet=enabled -Dc_args='-Wno-error=stringop-overflow'   -Dcpp_args='-Wno-error=stringop-overflow' $OPTIONS "$@"

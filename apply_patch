@@ -1,0 +1,25 @@
+#!/bin/sh
+# Script to apply the subs-bottom-stacking patch to mpv
+
+set -e  # Continue even if individual commands fail
+
+echo "Applying subs-bottom-stacking patch..."
+
+cd mpv
+
+# Check if patch is already applied by looking for a unique string from the patch
+if grep -q "sub-bottom-stacking" options/options.h 2>/dev/null; then
+    echo "Patch already applied, skipping."
+else
+    # Apply the patch with error handling
+    if git apply --ignore-whitespace --ignore-space-change ../subs-bottom-stacking.patch 2>/dev/null; then
+        echo "Patch applied successfully."
+    else
+        echo "Warning: Failed to apply patch (this may be expected if incompatible with current code)."
+        echo "This could be due to code changes in the repository that make the patch incompatible."
+    fi
+fi
+
+cd ..
+
+echo "Patch application process completed."

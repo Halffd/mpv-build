@@ -1,5 +1,12 @@
 #!/bin/sh
+set -e
 export LC_ALL=C
+
+BUILD_DIR="$(pwd)"
+MPV_DIR="$BUILD_DIR/mpv"
+UPSTREAM_MPV="https://github.com/mpv-player/mpv.git"
+FORK_MPV="https://github.com/Halffd/mpv.git"
+FORK_BRANCH="sub-stacking"
 
 do_clone()
 {
@@ -18,10 +25,16 @@ do_clone()
 do_clone_all()
 {
     do_clone "ffmpeg"     "https://github.com/FFmpeg/FFmpeg.git"
-    #do_clone "fribidi"    "http://anongit.freedesktop.org/git/fribidi/fribidi.git"
     do_clone "libass"     "https://github.com/libass/libass.git"
     do_clone "libplacebo" "https://github.com/haasn/libplacebo.git"
-    do_clone "mpv"        "https://github.com/mpv-player/mpv.git"
+    do_clone "mpv"        "$FORK_MPV"
+}
+
+versort_with_prefix()
+{
+    sed -n -e "s/^$1\([0-9]\)/\1/p" |\
+        sort -n -t . -k 1,1 -k 2,2 -k 3,3 -k 4,4 |\
+        sed -e "s/^/$1/"
 }
 
 do_gitmaster()
@@ -34,22 +47,12 @@ do_gitmaster()
     )
 }
 
-versort_with_prefix()
-{
-	# Emulate sort -V using a known prefix. Filter out anything else.
-	sed -n -e "s/^$1\([0-9]\)/\\1/p" |\
-		sort -n -t . -k 1,1 -k 2,2 -k 3,3 -k 4,4 |\
-		sed -e "s/^/$1/"
-	# GNU version of the same:
-	# grep "^$2[0-9]" | sort -V
-}
-
 do_releasetag()
 {
-    local prefix=  # by default, don't use a prefix
+    local prefix=
     case "$1" in
-        ffmpeg) prefix=n;;  # e.g. n3.3.1
-        mpv|libplacebo)    prefix=v;;  # e.g. v0.26.0
+        ffmpeg) prefix=n;;
+        mpv|libplacebo)    prefix=v;;
     esac
 
     (
@@ -67,7 +70,6 @@ do_fixedref()
     )
 }
 
-# args: $1: project name, $2: release/master/@foo [,$3: non-empty to ignore the config file]
 checkout()
 {
     local branch="$2"
@@ -78,26 +80,22 @@ checkout()
     case "$branch" in
         master)  do_gitmaster $1;;
         release) do_releasetag $1;;
-        @*)      do_fixedref $1 "${branch#@}";;  # everything after the '@' prefix
+        @*)      do_fixedref $1 "${branch#@}";;
         *)       >&2 printf "%s\n" "Error: Don't know how to checkout '$branch'"
                  return 1
     esac
 }
 
-# fallback targets: release/master/@foo if no config file
 checkout_ffmpeg=master
-#checkout_fribidi=release
 checkout_libass=master
 checkout_libplacebo=master
 checkout_mpv=master
-
 
 checkout_all()
 {
     set -ex
     do_clone_all
     checkout ffmpeg $checkout_ffmpeg
-    #$checkout fribidi $checkout_fribidi
     checkout libass $checkout_libass
     checkout libplacebo $checkout_libplacebo
     checkout mpv $checkout_mpv
@@ -117,11 +115,9 @@ if [ x"$1" != x"--skip-selfupdate" ]; then
 fi
 shift
 
-# allow checkout master/release without checking the config files
 case "$1" in
     --master)
         checkout_ffmpeg="master -"
-        #checkout_fribidi="master -"
         checkout_libass="master -"
         checkout_libplacebo="master -"
         checkout_mpv="master -"
@@ -130,11 +126,13 @@ case "$1" in
         checkout_ffmpeg="release -"
         checkout_mpv="release -"
         ;;
+    --fork)
+        checkout_mpv="@$FORK_BRANCH -"
+        ;;
     '')
         ;;
     *)
-        echo >&2 "$0 --master"
-        echo >&2 "$0 --release"
+        echo >&2 "$0 [--master|--release|--fork]"
         exit 0
         ;;
 esac
@@ -143,5 +141,74 @@ checkout_all
 
 do_update_debian_versions
 
-#cd mpv
-#git apply ../subs.patch
+# Apply patches
+apply_patches() {
+    set +e
+    if [ -f "$BUILD_DIR/subs-bottom-stacking.patch" ]; then
+        echo "Applying subs-bottom-stacking patch..."
+        cd "$MPV_DIR"
+        if ! grep -q "sub-bottom-stacking" options/options.h 2>/dev/null; then
+            git apply --ignore-whitespace --ignore-space-change "$BUILD_DIR/subs-bottom-stacking.patch" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                echo "Patch applied successfully."
+            else
+                echo "Warning: Failed to apply patch."
+            fi
+        else
+            echo "Patch already applied, skipping."
+        fi
+        cd "$BUILD_DIR"
+    fi
+}
+
+apply_patches
+
+# Auto-merge upstream into fork branch
+auto_merge_fork() {
+    echo "=== Auto-merging upstream into fork branch ==="
+    cd "$MPV_DIR"
+    
+    # Add upstream if not present
+    git remote | grep -q upstream || git remote add upstream "$UPSTREAM_MPV"
+    
+    # Fetch both
+    git fetch upstream
+    git fetch origin
+    
+    # Ensure we're on the fork branch
+    git checkout "$FORK_BRANCH" 2>/dev/null || git checkout -b "$FORK_BRANCH" origin/"$FORK_BRANCH"
+    
+    # Rebase onto upstream/master
+    echo "Rebasing $FORK_BRANCH onto upstream/master..."
+    if git rebase upstream/master; then
+        echo "Rebase successful. Pushing to fork..."
+        git push origin "$FORK_BRANCH" --force-with-lease
+    else
+        echo "Rebase conflict. Attempting merge..."
+        git rebase --abort
+        if git merge upstream/master --no-edit; then
+            echo "Merge successful. Pushing to fork..."
+            git push origin "$FORK_BRANCH" --force-with-lease
+        else
+            echo "ERROR: Merge failed. Manual resolution required."
+            exit 1
+        fi
+    fi
+    cd "$BUILD_DIR"
+}
+
+case "$1" in
+    --merge-fork)
+        auto_merge_fork
+        ;;
+    --full)
+        auto_merge_fork
+        echo "=== Rebuilding all ==="
+        ./scripts/libplacebo-config && ./scripts/libplacebo-build
+        ./scripts/libass-config && ./scripts/libass-build
+        ./scripts/ffmpeg-config && ./scripts/ffmpeg-build
+        ./scripts/mpv-config && ./scripts/mpv-build
+        ;;
+esac
+
+echo "=== Update complete ==="
